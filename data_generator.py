@@ -47,16 +47,17 @@ class DataGenerator(keras.utils.Sequence):
             np.random.shuffle(self.indexes)
 
     def __data_generation(self, x_train, y_train, f):
-        rotation = random.uniform(-2, 2)
+        rotation = random.uniform(-15, 15)
+        flip = random.randint(0,1) # Python converts 0/1 to true and false
         cur_frame_raw = x_train[f]
         cur_frame_raw = self.resize_image(
-            cur_frame_raw, self.dim[1], self.dim[0], rotation)
+            cur_frame_raw, self.dim[1], self.dim[0], rotation, flip)
 
         mask_frame = None
         if f > 0:
             mask_frame = y_train[f-1]
             mask_frame = self.resize_image(
-                mask_frame, self.dim[1], self.dim[0], rotation)
+                mask_frame, self.dim[1], self.dim[0], rotation, flip)
             mask_frame = rgb2gray(mask_frame)
         else:
             mask_frame = np.zeros(
@@ -74,15 +75,16 @@ class DataGenerator(keras.utils.Sequence):
 
         compare_frame = y_train[f]
         compare_frame = self.resize_image(
-            compare_frame, self.dim[1], self.dim[0], rotation)
+            compare_frame, self.dim[1], self.dim[0], rotation, flip)
         compare_frame = rgb2gray(compare_frame)
         compare_frame = np.expand_dims(compare_frame, -1)
         # compare_frame = np.expand_dims(compare_frame, 0)
         return np.stack((cur_frame, cur_frame_raw)), np.stack((compare_frame, compare_frame))
 
     # Resize image, keeping all of image with black bars filling rest
-    def resize_image(self, im, width, height, rotation, fill_color=(0, 0, 0)):
+    def resize_image(self, im, width, height, rotation, flip=False, fill_color=(0, 0, 0)):
         im = Image.fromarray(im.astype('uint8'))        
-        new_im = ri.resize_contain(im, (width, height), bg_color=fill_color)      
+        new_im = ri.resize_contain(im, (width, height), bg_color=fill_color)  
+        new_im = new_im.transpose(method=Image.FLIP_LEFT_RIGHT)    
         new_im = new_im.rotate(rotation)  
         return np.asarray(new_im)

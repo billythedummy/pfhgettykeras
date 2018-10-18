@@ -1,4 +1,4 @@
-from keras.layers import Input, Dense, Conv2D, Activation, Add, MaxPooling2D, Lambda, Dropout
+from keras.layers import Input, Dense, Conv2D, Activation, Add, MaxPooling2D, Lambda, Dropout, BatchNormalization
 from keras.layers.advanced_activations import LeakyReLU
 from keras.models import Model, Sequential
 from keras.applications import MobileNetV2
@@ -9,7 +9,7 @@ import math
 
 class SegmentationNetwork:
     # Layers specify amount of encoder and decoder layers (Total amount of layers will equal layers * 2!)
-    def __init__(self, start_filters=16, squeeze_factor=16, layers=4):
+    def __init__(self, start_filters=16, squeeze_factor=8, layers=4):
         self._startFilters = int(start_filters)
         self._squeezeFactor = int(squeeze_factor)
         self._bottleneckFilters = int(self._startFilters / self._squeezeFactor)
@@ -19,7 +19,9 @@ class SegmentationNetwork:
         segmentation_input = Input(
             shape=(None, None, 4), name="segmentation_input")
 
+        # Append coordinate channel to input
         a = CoordinateChannel2D()(segmentation_input)
+
         # Beginning convolution
         a = Conv2D(filters=self._startFilters,
                    kernel_size=1, padding="same")(a)
@@ -35,8 +37,6 @@ class SegmentationNetwork:
                 self._startFilters * math.pow(2, i + 1)), kernel_size=3, padding="same", strides=2)(a)
             a = LeakyReLU()(a)
 
-        a = Dropout(0.4)(a)
-
         # Decoder block
         for i in range(0, self._layers):
             num_filters = int(self._startFilters *
@@ -48,8 +48,6 @@ class SegmentationNetwork:
             a = Add()([a, encoder_stack.pop()])
 
             a = self.residual_block(a, filters=num_filters)
-
-
 
         a = Conv2D(filters=1, kernel_size=1)(a)
         outputnode = Activation(activation="sigmoid", name="outputnode")(a)
@@ -69,8 +67,8 @@ class SegmentationNetwork:
         # 1 x 1 with extension factor
         a = Conv2D(filters=filters, kernel_size=1)(a)
 
-        # Scale output by 0.1 for soft learning
-        a = Lambda(lambda x: x * 0.1)(a)
+        # Batch normalization for better learns
+        a = BatchNormalization()(a)
         # Add residual
         a = Add()([a, x])
         a = LeakyReLU()(a)
