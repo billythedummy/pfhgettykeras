@@ -7,4 +7,7 @@
 *.mp4
 *.jpg
 *.png
+*.mocha
+*.mocha.*
+*.hdf5
 __pycache__/*

@@ -3,6 +3,7 @@ Author: Preston Lee
 Data generator for plate segmentation -- creates batches of plate and plate mask training data
 '''
 # Basic Libraries
+import tensorflow as tf
 import keras
 import numpy as np
 import random
@@ -11,13 +12,19 @@ from PIL import Image
 from resizeimage import resizeimage as ri
 from skimage.color import rgb2gray
 from scipy import ndimage
+import skimage as sk
+from skimage import util
 # Detect memory leaks
 from mem_top import mem_top
 import gc
+
+
 class DataGenerator(keras.utils.Sequence):
 
-    def __init__(self, x_train, y_train, batch_size=10, dim=(32, 32, 3), shuffle=True):
+    def __init__(self, x_train, y_train, batch_size=10, dim=(32, 32, 3), color_dict=None,shuffle=True):
         'Initialization'
+        # colour map
+        self.color_dict = color_dict
         self.dim = dim
         self.batch_size = batch_size
         self.x_train = x_train
@@ -48,43 +55,53 @@ class DataGenerator(keras.utils.Sequence):
 
     def __data_generation(self, x_train, y_train, f):
         rotation = random.uniform(-15, 15)
-        flip = random.randint(0,1) # Python converts 0/1 to true and false
         cur_frame_raw = x_train[f]
         cur_frame_raw = self.resize_image(
-            cur_frame_raw, self.dim[1], self.dim[0], rotation, flip)
+            cur_frame_raw, self.dim[1], self.dim[0], rotation)
 
         mask_frame = None
         if f > 0:
             mask_frame = y_train[f-1]
             mask_frame = self.resize_image(
-                mask_frame, self.dim[1], self.dim[0], rotation, flip)
-            mask_frame = rgb2gray(mask_frame)
+                mask_frame, self.dim[1], self.dim[0], rotation, add_noise=False)
+            mask_frame = self.rgb2onehot(mask_frame)
         else:
             mask_frame = np.zeros(
-                shape=(self.dim[0], self.dim[1], 1))
+                shape=(self.dim[0], self.dim[1], len(self.color_dict)))
 
         # Add mask as another channel to current frame data to be passed into neural net
         cur_frame = np.dstack((cur_frame_raw, mask_frame))
 
         # Keep a reference to current frame data with blank previous mask
         cur_frame_raw = np.dstack(
-            (cur_frame_raw, np.zeros(shape=(self.dim[0], self.dim[1], 1))))
+            (cur_frame_raw, np.zeros(shape=(self.dim[0], self.dim[1], len(self.color_dict)))))
 
         # cur_frame = np.expand_dims(cur_frame, 0)
         # cur_frame_raw = np.expand_dims(cur_frame_raw, 0)
 
         compare_frame = y_train[f]
         compare_frame = self.resize_image(
-            compare_frame, self.dim[1], self.dim[0], rotation, flip)
-        compare_frame = rgb2gray(compare_frame)
-        compare_frame = np.expand_dims(compare_frame, -1)
+            compare_frame, self.dim[1], self.dim[0], rotation)
+        compare_frame = self.rgb2onehot(compare_frame)
         # compare_frame = np.expand_dims(compare_frame, 0)
         return np.stack((cur_frame, cur_frame_raw)), np.stack((compare_frame, compare_frame))
 
-    # Resize image, keeping all of image with black bars filling rest
-    def resize_image(self, im, width, height, rotation, flip=False, fill_color=(0, 0, 0)):
-        im = Image.fromarray(im.astype('uint8'))        
-        new_im = ri.resize_contain(im, (width, height), bg_color=fill_color)  
-        new_im = new_im.transpose(method=Image.FLIP_LEFT_RIGHT)    
-        new_im = new_im.rotate(rotation)  
-        return np.asarray(new_im)
+    # Resize/augment image, keeping all of image with black bars filling rest
+    def resize_image(self, im, width, height, rotation, fill_color=(0, 0, 0), add_noise=False):
+        im = Image.fromarray(im.astype('uint8'))
+        new_im = ri.resize_contain(im, (width, height), bg_color=fill_color)
+
+        new_im = new_im.rotate(rotation)
+        im_array = np.asarray(new_im)
+        if(add_noise):
+            im_array = sk.util.random_noise(im_array, mode='s&p')
+        return im_array
+
+    def rgb2onehot(self, rgb_arr):
+        num_classes = len(self.color_dict)
+        shape = rgb_arr.shape[:2]+(num_classes,)
+        arr = np.zeros(shape, dtype=np.int8)
+        for i, cls in enumerate(self.color_dict):
+            arr[:, :, i] = np.all(rgb_arr.reshape(
+                (-1, 3)) == self.color_dict[i], axis=1).reshape(shape[:2])
+        return arr
