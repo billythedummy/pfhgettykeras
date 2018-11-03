@@ -25,45 +25,55 @@ from data_generator import DataGenerator
 from model import SegmentationNetwork
 from clr import CyclicLR
 
-# Accommodate large batch size
-import sys
-sys.setrecursionlimit(10000)
+
+def onehot2rgb(onehot, color_dict):
+    single_layer = np.argmax(onehot, axis=-1)
+    output = np.zeros(onehot.shape[:2]+(3,))
+    for k in color_dict.keys():
+        output[single_layer == k] = color_dict[k]
+    return np.uint8(output)
+
 
 IMAGE_INPUT_WIDTH = 512
-IMAGE_INPUT_HEIGHT = 256
+IMAGE_INPUT_HEIGHT = 1024
 # Load a model from folder
 LOAD_MODEL = False
 LOAD_MODEL_PATH = "./Models/PlateSegmentation/weights-01.hdf5"
 color_dict = {0: (0,   0, 0),  # 0: Background
-              1: (255, 255, 255),  # 1: Red
-              #   2: (0, 0, 255),  # 2: Blue
+              1: (255, 0, 0),  # 1: Red
+              2: (0, 0, 255),  # 2: Blue
               }
 # Create data generator
-datagen = DataGenerator(x_train=pims.Video("./Training/fulloriginalcorrected.mov"),
-                        y_train=pims.Video("./Training/fullmaskcorrected-colored.mov"), batch_size=8,
-                        dim=(IMAGE_INPUT_HEIGHT, IMAGE_INPUT_WIDTH, 3), shuffle=True,
-                        color_dict=color_dict)
+datagen = DataGenerator(
+    x_train=pims.Video("./Training/newtrainingdata.mov"),
+    y_train=pims.Video("./Training/newtraininglabels.mov"), batch_size=4,
+    dim=(IMAGE_INPUT_HEIGHT, IMAGE_INPUT_WIDTH, 3), shuffle=True,
+    color_dict=color_dict)
+
 
 model = SegmentationNetwork(
-    layers=4, start_filters=12, squeeze_factor=8, num_classes=len(color_dict)).create_model()
+    layers=4, start_filters=12, squeeze_factor=12, num_classes=len(color_dict),
+    shape=(IMAGE_INPUT_HEIGHT, IMAGE_INPUT_WIDTH, 3)).create_model()
+
 if(LOAD_MODEL):
     print("Resuming model from {}".format(LOAD_MODEL_PATH))
     model.load_weights(LOAD_MODEL_PATH)
 
 sgd = optimizers.SGD(lr=0.0)
-model.compile(optimizer=sgd, loss="binary_crossentropy")
+model.compile(optimizer=sgd, loss="categorical_crossentropy",
+              metrics=['accuracy'])
 # model = UNet(input_size = (IMAGE_INPUT_HEIGHT, IMAGE_INPUT_WIDTH, 4)).unet()
 
 
-cyclical = CyclicLR(base_lr=0.00001, max_lr=0.15,
-                    step_size=123*2, mode="triangular2")
+cyclical = CyclicLR(base_lr=0.000001, max_lr=0.1,
+                    step_size=datagen.__len__() * 2, mode="triangular2")
 checkpoint = ModelCheckpoint(
     "./Models/PlateSegmentation/weights-{epoch:02d}.hdf5", verbose=1, period=1)
 
 
 def train(data_generator, callbacks):
     return model.fit_generator(generator=data_generator,
-                               callbacks=callbacks, epochs=4, verbose=1)
+                               callbacks=callbacks, epochs=100, verbose=1)
 
 
 def resize_image(im, width, height, fill_color=(0, 0, 0)):
@@ -80,13 +90,6 @@ def format_image_for_save(im, remove_batch=True):
         image = np.squeeze(im, -1)
     return image
 
-def onehot2rgb(onehot, color_dict):
-    single_layer = np.argmax(onehot, axis=-1)
-    output = np.zeros(onehot.shape[:2]+(3,))
-    for k in color_dict.keys():
-        output[single_layer == k] = color_dict[k]
-    return np.uint8(output)
-
 
 def rgb2onehot(rgb_arr):
     num_classes = len(color_dict)
@@ -99,7 +102,8 @@ def rgb2onehot(rgb_arr):
 
 
 def test(x_test):
-    mask = np.zeros(shape=(IMAGE_INPUT_HEIGHT, IMAGE_INPUT_WIDTH, len(color_dict)))
+    mask = np.zeros(shape=(IMAGE_INPUT_HEIGHT,
+                           IMAGE_INPUT_WIDTH, len(color_dict)))
     for i in range(0, len(x_test)):
         cur_frame = x_test[i]
         cur_frame = resize_image(
@@ -113,6 +117,7 @@ def test(x_test):
         ski.imsave("./TestOutput/segmentation" +
                    str(i)+".png", mask)
         mask = rgb2onehot(mask)
+
 
 history = train(data_generator=datagen, callbacks=[cyclical, checkpoint])
 # plt.plot(cyclical.history['lr'], cyclical.history['loss'])

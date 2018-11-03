@@ -22,22 +22,26 @@ from model import SegmentationNetwork
 # from clr import CyclicLR
 IMAGE_INPUT_WIDTH = 512
 IMAGE_INPUT_HEIGHT = 256
-LOAD_MODEL_PATH = "./Models/PlateSegmentation/weights-03.hdf5"
+LOAD_MODEL_PATH = "./Models/PlateSegmentation/weights-25.hdf5"
 color_dict = {0: (0,   0, 0),  # 0: Background
-              1: (255, 255, 255),  # 1: Red
-              #   2: (0, 0, 255),  # 2: Blue
+              1: (255, 0, 0),  # 1: Red
+              2: (0, 0, 255),  # 2: Blue
               }
 model = SegmentationNetwork(
-    layers=4, start_filters=12, squeeze_factor=8,num_classes=len(color_dict)).create_model()
+    layers=4, start_filters=16, squeeze_factor=16, num_classes=len(color_dict), 
+    shape=(IMAGE_INPUT_HEIGHT, IMAGE_INPUT_WIDTH, 3)).create_model()
 
 print("Resuming model from {}".format(LOAD_MODEL_PATH))
 model.load_weights(LOAD_MODEL_PATH)
 
 print("Model loaded!")
+
+
 def resize_image(im, width, height, fill_color=(0, 0, 0)):
-    im = Image.fromarray(im.astype('uint8'))
-    new_im = ri.resize_contain(im, (width, height), bg_color=fill_color)
+    new_im = Image.fromarray(im.astype('uint8'))
+    new_im = ri.resize_contain(new_im, (width, height), bg_color=fill_color)
     return np.asarray(new_im)
+
 
 def onehot2rgb(onehot, color_dict):
     single_layer = np.argmax(onehot, axis=-1)
@@ -55,9 +59,11 @@ def rgb2onehot(rgb_arr):
         arr[:, :, i] = np.all(rgb_arr.reshape(
             (-1, 3)) == color_dict[i], axis=1).reshape(shape[:2])
     return arr
-    
+
+
 def test(x_test):
-    mask = np.zeros(shape=(IMAGE_INPUT_HEIGHT, IMAGE_INPUT_WIDTH, len(color_dict)))
+    mask = np.zeros(shape=(IMAGE_INPUT_HEIGHT,
+                           IMAGE_INPUT_WIDTH, len(color_dict)))
     for i in range(0, len(x_test)):
         cur_frame = x_test[i]
         cur_frame = resize_image(
@@ -67,11 +73,14 @@ def test(x_test):
 
         mask = model.predict_on_batch(cur_frame)
         mask = np.squeeze(mask, 0)
+        # mask = np.transpose(mask, (1, 0))
+        mask = np.reshape(mask, (IMAGE_INPUT_HEIGHT, IMAGE_INPUT_WIDTH, len(color_dict)))
         mask = onehot2rgb(mask, color_dict)
+
         ski.imsave("./TestOutput/segmentation" +
                    str(i)+".png", mask)
         mask = rgb2onehot(mask)
 
 
-x_test = pims.Video("./Training/original.mov")
+x_test = pims.Video("./Training/newtrainingdata.mov")
 test(x_test)

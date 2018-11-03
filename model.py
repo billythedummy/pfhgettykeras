@@ -1,7 +1,7 @@
-from keras.layers import Input, Dense, Conv2D, Activation, Add, MaxPooling2D, Lambda, Dropout, BatchNormalization
+from keras.layers import Input, Dense, Conv2D, Activation, Add, MaxPooling2D, Lambda
+from keras.layers import Dropout, BatchNormalization, Reshape, Permute
 from keras.layers.advanced_activations import LeakyReLU
 from keras.models import Model, Sequential
-from keras.applications import MobileNetV2
 from coord import CoordinateChannel2D
 from subpixel import SubpixelConv2D
 import math
@@ -9,25 +9,35 @@ import math
 
 class SegmentationNetwork:
     # Layers specify amount of encoder and decoder layers (Total amount of layers will equal layers * 2!)
-    def __init__(self, start_filters=16, squeeze_factor=16, layers=4, num_classes=2):
+    def __init__(self, start_filters=16, squeeze_factor=16, layers=4, num_classes=2, shape=(1024,2048,3)):
         self._startFilters = int(start_filters)
         self._squeezeFactor = int(squeeze_factor)
         self._bottleneckFilters = int(self._startFilters / self._squeezeFactor)
         self._layers = int(layers)
         self._numClasses = num_classes
+        self._shape = shape
 
     def create_model(self):
         segmentation_input = Input(
-            shape=(None, None, 3+self._numClasses), name="segmentation_input")
+            shape=(self._shape[0], self._shape[1], 3+self._numClasses), name="segmentation_input")
 
         # Append coordinate channel to input
-        a = CoordinateChannel2D(use_radius=True)(segmentation_input)
+        # a = CoordinateChannel2D(use_radius=True)(segmentation_input)
 
         # Beginning convolution
         a = Conv2D(filters=self._startFilters,
-                   kernel_size=3, padding="same")(a)
-        a = BatchNormalization()(a)
+                   kernel_size=3, padding="same", dilation_rate=2)(segmentation_input)
+        # a = BatchNormalization()(a)
         a = Activation(activation="relu")(a)
+        a = Conv2D(filters=self._startFilters,
+                   kernel_size=3, padding="same", dilation_rate=2)(a)
+        # a = BatchNormalization()(a)
+        a = Activation(activation="relu")(a)
+        a = Conv2D(filters=self._startFilters,
+                   kernel_size=3, padding="same", dilation_rate=2)(a)
+        
+        a = Activation(activation="relu")(a)
+        a = BatchNormalization()(a)
 
         encoder_stack = []
         # Encoder block
@@ -54,7 +64,10 @@ class SegmentationNetwork:
             a = self.residual_block(a, filters=num_filters)
 
         a = Conv2D(filters=self._numClasses, kernel_size=3, padding="same")(a)
-        outputnode = Activation(activation="sigmoid", name="outputnode")(a)
+        a = Reshape((self._shape[0] * self._shape[1], self._numClasses))(a)
+        outputnode = Activation(activation="softmax", name="outputnode")(a)
+        # outputnode_formatted = Permute((2,1))(outputnode)
+        # outputnode_formatted = Reshape((256, 512, self._numClasses))(outputnode_formatted)
         return Model(inputs=segmentation_input, outputs=outputnode)
 
     def residual_block(self, x, filters):
