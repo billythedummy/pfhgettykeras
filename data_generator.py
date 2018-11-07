@@ -20,9 +20,18 @@ from skimage import util
 import matplotlib.pyplot as plt
 
 
-class DataGenerator(keras.utils.Sequence):
+class DataGeneratorFactory():
+    def __init__(self, x_train, y_train, batch_size, dim, color_dict, shuffle=True, validation_split=0.1):
+        indices = np.arange(len(y_train))
+        np.random.shuffle(indices)
+        val_length = int(len(y_train) * validation_split)
+        validation = indices[:val_length]
+        indices = indices[val_length:]
+        self.datagen = DataGenerator(x_train, y_train, batch_size, dim, color_dict, shuffle=shuffle, indices=indices)
+        self.validation_datagen = DataGenerator(x_train, y_train, batch_size, dim, color_dict, shuffle=shuffle, indices=validation)
 
-    def __init__(self, x_train, y_train, batch_size=10, dim=(32, 32, 3), color_dict=None, shuffle=True):
+class DataGenerator(keras.utils.Sequence):
+    def __init__(self, x_train, y_train, batch_size, dim, color_dict, indices=None, shuffle=True):
         'Initialization'
         # colour map
         self.color_dict = color_dict
@@ -31,15 +40,16 @@ class DataGenerator(keras.utils.Sequence):
         self.x_train = x_train
         self.y_train = y_train
         self.shuffle = shuffle
+        self._indices = indices
         self.on_epoch_end()
 
     def __len__(self):
         # Denotes the number of batches per epoch
-        return int(len(self.y_train) // self.batch_size)
+        return int(len(self._indices) // self.batch_size)
 
     def __getitem__(self, index):
         # Generate indexes of the batch from random sampling
-        indexes = self.indexes[index*self.batch_size:(index+1)*self.batch_size]
+        indexes = self._indices[index*self.batch_size:(index+1)*self.batch_size]
         x_list, y_list = [], []
         # Generate data
         for i in indexes:
@@ -50,21 +60,20 @@ class DataGenerator(keras.utils.Sequence):
 
     def on_epoch_end(self):
         # Updates indexes after each epoch
-        self.indexes = np.arange(len(self.y_train))
         if self.shuffle == True:
-            np.random.shuffle(self.indexes)
+            np.random.shuffle(self._indices)
 
     def __data_generation(self, x_train, y_train, f):
         rotation = random.uniform(-30, 30)
         cur_frame_raw = x_train[f]
         cur_frame_raw = self.resize_image(
             cur_frame_raw, self.dim[1], self.dim[0], rotation, enhance=True, resample=Image.LANCZOS)
-
+        cur_frame_raw = cur_frame_raw / 255.0
         mask_frame = None
         if f > 0 and random.random() > 0.15:
             mask_frame = y_train[f-1]
             mask_frame = self.resize_image(
-                mask_frame, self.dim[1], self.dim[0], rotation + random.uniform(-4, 4))
+                mask_frame, self.dim[1], self.dim[0], rotation)
             mask_frame = self.rgb2onehot_distorted(mask_frame)
         else:
             mask_frame = np.zeros(
@@ -77,7 +86,8 @@ class DataGenerator(keras.utils.Sequence):
         compare_frame = self.resize_image(
             compare_frame, self.dim[1], self.dim[0], rotation)
         compare_frame = self.rgb2onehot(compare_frame)
-        compare_frame = np.reshape(compare_frame, (self.dim[0] * self.dim[1], len(self.color_dict)))
+        compare_frame = np.reshape(
+            compare_frame, (self.dim[0] * self.dim[1], len(self.color_dict)))
         # compare_frame = np.expand_dims(compare_frame, 0)
         return cur_frame, compare_frame
 
@@ -96,6 +106,8 @@ class DataGenerator(keras.utils.Sequence):
                 new_im).enhance(random.uniform(0.7, 1.4))
             new_im = ImageEnhance.Sharpness(
                 new_im).enhance(random.uniform(0.7, 1.4))
+            new_im = ImageEnhance.Color(new_im).enhance(
+                random.uniform(0.7, 1.3))
         im_array = np.asarray(new_im)
         return im_array
 
@@ -116,5 +128,6 @@ class DataGenerator(keras.utils.Sequence):
     def rgb2onehot_distorted(self, rgb_arr):
         noisiness = math.pow(random.uniform(0, 0.8), 2)
         onehot = self.rgb2onehot(rgb_arr)
-        noise = np.random.rand(self.dim[0], self.dim[1], len(self.color_dict)) * noisiness
+        noise = np.random.rand(
+            self.dim[0], self.dim[1], len(self.color_dict)) * noisiness
         return np.abs(onehot - noise)

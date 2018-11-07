@@ -20,15 +20,15 @@ import matplotlib.pyplot as plt
 from data_generator import DataGenerator
 from model import SegmentationNetwork
 # from clr import CyclicLR
-IMAGE_INPUT_WIDTH = 512
-IMAGE_INPUT_HEIGHT = 256
+IMAGE_INPUT_WIDTH = 2048
+IMAGE_INPUT_HEIGHT = 1024
 LOAD_MODEL_PATH = "./Models/PlateSegmentation/weights-25.hdf5"
 color_dict = {0: (0,   0, 0),  # 0: Background
               1: (255, 0, 0),  # 1: Red
               2: (0, 0, 255),  # 2: Blue
               }
 model = SegmentationNetwork(
-    layers=4, start_filters=16, squeeze_factor=16, num_classes=len(color_dict), 
+    layers=3, start_filters=16, squeeze_factor=16, num_classes=len(color_dict), 
     shape=(IMAGE_INPUT_HEIGHT, IMAGE_INPUT_WIDTH, 3)).create_model()
 
 print("Resuming model from {}".format(LOAD_MODEL_PATH))

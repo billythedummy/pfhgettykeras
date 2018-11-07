@@ -21,7 +21,7 @@ import pims
 from resizeimage import resizeimage as ri
 import matplotlib.pyplot as plt
 # Custom Libraries
-from data_generator import DataGenerator
+from data_generator import DataGenerator, DataGeneratorFactory
 from model import SegmentationNetwork
 from clr import CyclicLR
 
@@ -34,7 +34,7 @@ def onehot2rgb(onehot, color_dict):
     return np.uint8(output)
 
 
-IMAGE_INPUT_WIDTH = 512
+IMAGE_INPUT_WIDTH = 2048
 IMAGE_INPUT_HEIGHT = 1024
 # Load a model from folder
 LOAD_MODEL = False
@@ -44,15 +44,17 @@ color_dict = {0: (0,   0, 0),  # 0: Background
               2: (0, 0, 255),  # 2: Blue
               }
 # Create data generator
-datagen = DataGenerator(
+datagen = DataGeneratorFactory(
     x_train=pims.Video("./Training/newtrainingdata.mov"),
     y_train=pims.Video("./Training/newtraininglabels.mov"), batch_size=4,
     dim=(IMAGE_INPUT_HEIGHT, IMAGE_INPUT_WIDTH, 3), shuffle=True,
-    color_dict=color_dict)
+    color_dict=color_dict, validation_split=0.05)
+train_data = datagen.datagen
+val_data = datagen.validation_datagen
 
 
 model = SegmentationNetwork(
-    layers=4, start_filters=12, squeeze_factor=12, num_classes=len(color_dict),
+    layers=4, start_filters=16, squeeze_factor=16, num_classes=len(color_dict),
     shape=(IMAGE_INPUT_HEIGHT, IMAGE_INPUT_WIDTH, 3)).create_model()
 
 if(LOAD_MODEL):
@@ -61,19 +63,19 @@ if(LOAD_MODEL):
 
 sgd = optimizers.SGD(lr=0.0)
 model.compile(optimizer=sgd, loss="categorical_crossentropy",
-              metrics=['accuracy'])
+              metrics=['categorical_accuracy'])
 # model = UNet(input_size = (IMAGE_INPUT_HEIGHT, IMAGE_INPUT_WIDTH, 4)).unet()
 
 
-cyclical = CyclicLR(base_lr=0.000001, max_lr=0.1,
-                    step_size=datagen.__len__() * 2, mode="triangular2")
+cyclical = CyclicLR(base_lr=0.000001, max_lr=0.01,
+                    step_size=train_data.__len__() * 2, mode="triangular2")
 checkpoint = ModelCheckpoint(
     "./Models/PlateSegmentation/weights-{epoch:02d}.hdf5", verbose=1, period=1)
 
 
-def train(data_generator, callbacks):
-    return model.fit_generator(generator=data_generator,
-                               callbacks=callbacks, epochs=100, verbose=1)
+def train(data_generator, val_generator, callbacks):
+    return model.fit_generator(generator=data_generator, validation_data=val_generator,
+                               callbacks=callbacks, epochs=100, verbose=1, use_multiprocessing=True, workers=1)
 
 
 def resize_image(im, width, height, fill_color=(0, 0, 0)):
@@ -101,29 +103,30 @@ def rgb2onehot(rgb_arr):
     return arr
 
 
-def test(x_test):
-    mask = np.zeros(shape=(IMAGE_INPUT_HEIGHT,
-                           IMAGE_INPUT_WIDTH, len(color_dict)))
-    for i in range(0, len(x_test)):
-        cur_frame = x_test[i]
-        cur_frame = resize_image(
-            cur_frame, IMAGE_INPUT_WIDTH, IMAGE_INPUT_HEIGHT)
-        cur_frame = np.dstack((cur_frame, mask))
-        cur_frame = np.expand_dims(cur_frame, 0)
+# def test(x_test):
+#     mask = np.zeros(shape=(IMAGE_INPUT_HEIGHT,
+#                            IMAGE_INPUT_WIDTH, len(color_dict)))
+#     for i in range(0, len(x_test)):
+#         cur_frame = x_test[i]
+#         cur_frame = resize_image(
+#             cur_frame, IMAGE_INPUT_WIDTH, IMAGE_INPUT_HEIGHT)
+#         cur_frame = np.dstack((cur_frame, mask))
+#         cur_frame = np.expand_dims(cur_frame, 0)
 
-        mask = model.predict_on_batch(cur_frame)
-        mask = np.squeeze(mask, 0)
-        mask = onehot2rgb(mask, color_dict)
-        ski.imsave("./TestOutput/segmentation" +
-                   str(i)+".png", mask)
-        mask = rgb2onehot(mask)
+#         mask = model.predict_on_batch(cur_frame)
+#         mask = np.squeeze(mask, 0)
+#         mask = onehot2rgb(mask, color_dict)
+#         ski.imsave("./TestOutput/segmentation" +
+#                    str(i)+".png", mask)
+#         mask = rgb2onehot(mask)
 
 
-history = train(data_generator=datagen, callbacks=[cyclical, checkpoint])
+history = train(data_generator=train_data, val_generator=val_data,
+                callbacks=[cyclical, checkpoint])
 # plt.plot(cyclical.history['lr'], cyclical.history['loss'])
 # plt.xlabel('Learning Rate')
 # plt.ylabel('Loss')
 # plt.show()
 
-x_test = pims.Video("./Training/original.mov")
-test(x_test)
+# x_test = pims.Video("./Training/original.mov")
+# test(x_test)
