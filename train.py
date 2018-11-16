@@ -82,16 +82,6 @@ train_data = datagen.datagen
 val_data = datagen.validation_datagen
 print("Data found!")
 
-
-count_classes = [0,0,0]
-for i in range(len(train_data)):
-    print(i)
-    Y = train_data.__getitem__(i)
-    flattened = np.reshape(Y, (-1, len(color_dict)))
-    for j in flattened:
-        count_classes[np.argmax(j, -1)] += 1
-print(count_classes / np.sum(count_classes))
-
 model = SegmentationNetwork(
     layers=3, start_filters=24, squeeze_factor=8, num_classes=len(color_dict),
     shape=(IMAGE_INPUT_HEIGHT, IMAGE_INPUT_WIDTH, 3)).create_model()
@@ -106,7 +96,8 @@ print("Metrics initialized!")
 bla_iou = build_iou_for(0, "black_iou")
 r_iou = build_iou_for(1, "red_iou")
 blu_iou = build_iou_for(2, "blue_iou")
-model.compile(optimizer=sgd, loss=weighted_pixelwise_crossentropy([0.0008, 1, 1]), 
+model.compile(optimizer=sgd, 
+    loss=weighted_pixelwise_crossentropy([0.00418313, 0.509627837, 1]), 
     sample_weight_mode="temporal", metrics=[bla_iou, r_iou, blu_iou])
 print("Model compiled!")
 
@@ -114,7 +105,7 @@ print("Model compiled!")
 tensorboard = TensorBoard(
     log_dir="logs/{}".format(time.time()), write_graph=True, update_freq="batch")
 print("Tensorboard loaded!")
-cyclical = CyclicLR(base_lr=0.000001, max_lr=0.000001,
+cyclical = CyclicLR(base_lr=0.000002, max_lr=0.00001,
                     step_size=train_data.__len__() * 2, mode="triangular2")
 checkpoint = ModelCheckpoint(
     "./Models/PlateSegmentation/weights-{epoch:02d}.hdf5", verbose=1, period=1)

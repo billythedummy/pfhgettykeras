@@ -66,20 +66,15 @@ class DataGenerator(keras.utils.Sequence):
 
     def __getitem__(self, index):
         # Generate indexes of the batch from random sampling
-        # indexes = self._indices[index *
-        #                         self.batch_size:(index+1)*self.batch_size]
-        # x_list, y_list = [], []
-        # # Generate data
-        # for i in indexes:
-        #     x, y = self.__data_generation(self.x_train, self.y_train, i)
-        #     x_list.append(x)
-        #     y_list.append(y)
-        # return np.stack(tuple(x_list)), np.stack(tuple(y_list))
-        y_list = []
-        for i in range(index * self.batch_size, (index+1) * self.batch_size):
-            y_list.append(self.__label_generation(self.y_train, 
-                i))
-        return y_list
+        indexes = self._indices[index * self.batch_size:(index+1)*self.batch_size]
+        x_list, y_list = [], []
+        # Generate data
+        for i in indexes:
+            x, y = self.__data_generation(self.x_train, self.y_train, i)
+            x_list.append(x)
+            y_list.append(y)
+        return np.stack(tuple(x_list)), np.stack(tuple(y_list))
+
 
     def on_epoch_end(self):
         # Updates indexes after each epoch
