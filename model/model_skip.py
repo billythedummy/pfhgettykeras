@@ -30,70 +30,51 @@ class SegmentationNetwork:
             shape=(self._shape[0], self._shape[1], 3+self._numClasses), name="segmentation_input")
 
         # Define encoder skip connections in a stack
-        # encoder_stack = []
-        a = Conv2D(filters=(self._startFilters * 2) // (4**2),
-                   kernel_size=16, padding="same")(segmentation_input)
-        a = ELU()(a)
-        a = SuperpixelConv2D(input_shape=(
-            None, None, self._startFilters), scale=4)(a)
-
-        # encoder_stack.append(a)
-
+        encoder_stack = []
+        a = segmentation_input
         # Encoder chain
         for i in range(1, self._layers):
             num_filters = int(self._startFilters * math.pow(2, i))
-            squeezeFactor = int(self._squeezeFactor * math.pow(1.6817, i))
+            squeezeFactor = int(self._squeezeFactor * math.pow(1.5, i))
 
+            # f(x)
+            a = Conv2D(filters=num_filters, kernel_size=3, padding="same")(a)
             a = self.linear_multistep_chain(
                 a, filters=num_filters, squeezeFactor=squeezeFactor,
-                n=int(math.pow(2, i+1)))
+                n=int(i**2))
+            encoder_stack.append(a)
 
-            if i != self._layers - 1:
-                # Linearize output into correct number of channels
-                a = Conv2D(filters=(num_filters * 2)//(4**2), kernel_size=1)(a)
-            else:
-                 # Linearize output into correct number of channels
-                a = Conv2D(filters=(num_filters)//(4**2), kernel_size=1)(a)
-            # Lossless Downscale
+            # Superpixel convolution to encode image losslessly
             a = SuperpixelConv2D(input_shape=(
-                None, None, num_filters), scale=4)(a)
-            # encoder_stack.append(a)
-            print(a.shape)
+                None, None, num_filters), scale=2)(a)
+
+        # Middle block (Part of encoder and decoder)
+        num_filters = int(self._startFilters * math.pow(2, self._layers))
+        squeezeFactor = int(self._squeezeFactor *
+                            math.pow(1.5, self._layers))
+        # a = ELU()(a)
+        a = Conv2D(filters=num_filters, kernel_size=3, padding="same")(a)
+        a = self.linear_multistep_chain(a, filters=num_filters,
+                                        squeezeFactor=squeezeFactor, n=self._layers)
 
         # Decoder chain
         for i in range(self._layers - 1, 0, -1):
             num_filters = int(self._startFilters * math.pow(2, i))
-            squeezeFactor = int(self._squeezeFactor * math.pow(1.6817, i))
+            squeezeFactor = int(self._squeezeFactor * math.pow(1.5, i))
 
+            # Subpixel convolution to decode image losslessly
+            a = SubpixelConv2D(input_shape=(
+                None, None, num_filters), scale=2)(a)
+            # f(x) + x
+            a = Concatenate()([a, encoder_stack.pop()])
             # f(x)
+            a = Conv2D(filters=num_filters, kernel_size=1, padding="same")(a)
             a = self.linear_multistep_chain(
                 a, filters=num_filters, squeezeFactor=squeezeFactor,
-                n=int(math.pow(2, i)))
-            # f(x) + x
-            # a = Add()([a, encoder_stack.pop()])
-            # Subpixel convolution to upscale/decode image
-            a = Conv2D(filters=int(num_filters * (4**2) / 2), kernel_size=1,
-                       )(a)
-            a = SubpixelConv2D(input_shape=(
-                None, None, num_filters), scale=4)(a)
+                n=int(i**2))
 
-        # Last decoder block
-        # f(x)
-        a = self.linear_multistep_chain(
-            a, filters=self._startFilters, squeezeFactor=self._squeezeFactor,
-            n=4)
-        # f(x) + x
-        # a = Concatenate()([a, encoder_stack.pop()])
-
-        # Subpixel convolution to upscale/decode image
-        a = Conv2D(filters=int(self._startFilters * (4**2)), kernel_size=1,
-                   )(a)
-        a = SubpixelConv2D(input_shape=(
-            None, None, num_filters), scale=4)(a)
-        # a = Reshape((self._shape[0] * self._shape[1], self._numClasses))(a)
-        a = Conv2D(filters=3, kernel_size=1)(a)
+        a = Conv2D(filters=self._numClasses, kernel_size=3, padding="same")(a)
         outputnode = Activation(activation=K.softmax, name="outputnode")(a)
-        # reshaped = Reshape((self._shape[0], self._shape[1], self._numClasses), name="outputnode_reshaped")(outputnode)
         return Model(inputs=segmentation_input, outputs=outputnode)
 
     def linear_multistep_chain(self, u_0, filters, squeezeFactor, n):
@@ -103,7 +84,7 @@ class SegmentationNetwork:
         for i in range(n - 1):
             # Do linear multistep
             u_nplus1 = self.linear_multistep(
-                u_n, filters, squeezeFactor, u_nminus1, i + 1, n)
+                u_n, filters, squeezeFactor, u_nminus1, i, n)
             # Update state
             u_nminus1 = u_n
             u_n = u_nplus1
@@ -111,18 +92,18 @@ class SegmentationNetwork:
 
     def residual_block(self, x, filters, squeezeFactor):
         # f(x)
-        a = self.res_weights(x, filters, squeezeFactor)
-        a = self.res_weights(a, filters, squeezeFactor)
+        a = self.res_weights(x, filters, squeezeFactor, dilation_rate=2)
         # f(x) + x
         a = Add()([a, x])
         return a
 
     def linear_multistep(self, x, filters, squeezeFactor, prev_step, block, total_blocks):
         # f(x)
-        a = self.res_weights(x, filters, squeezeFactor)
-        a = self.res_weights(a, filters, squeezeFactor)
+        a = self.res_weights(x, filters, squeezeFactor,
+                             dilation_rate=2 + 8 // total_blocks)
         p_survival = self.get_p_survival(block=block,
-                                         nb_total_blocks=total_blocks, p_survival_end=0.5, mode='linear_decay')
+                                         nb_total_blocks=total_blocks, p_survival_end=0.7,
+                                         mode='uniform')
         a = Lambda(self.stochastic_survival, arguments={
                    'p_survival': p_survival})(a)
         # (1 - k_n) * u_n + k_n * u_n-1 = residuals
@@ -131,18 +112,19 @@ class SegmentationNetwork:
         a = Add()([a, b, c])
         return a
 
-    def res_weights(self, x, filters, squeezeFactor):
-        a = ELU()(x)
+    def res_weights(self, x, filters, squeezeFactor, dilation_rate):
+        a = Activation(activation="relu")(x)
         # 1 x 1 with squeeze factor
         squeezed = Conv2D(filters=filters//squeezeFactor, kernel_size=1
                           )(a)
 
-        # 3 x 3 Convolution
+        # 3 x 3 Dilated Convolution
         a = Conv2D(filters=filters // 2,
-                   kernel_size=3, padding="same", dilation_rate=2)(squeezed)
+                   kernel_size=3, padding="same",
+                   dilation_rate=dilation_rate)(squeezed)
 
-        # 1 x 1 Convolution
-        b = Conv2D(filters=filters // 2, kernel_size=1,
+        # 3 x 3 Convolution
+        b = Conv2D(filters=filters // 2, kernel_size=3,
                    padding="same")(squeezed)
 
         # # 1 x 1 with extension factor

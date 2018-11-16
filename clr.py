@@ -117,7 +117,6 @@ class CyclicLR(Callback):
             K.set_value(self.model.optimizer.lr, self.clr())        
             
     def on_batch_end(self, epoch, logs={}):
-        
         logs = logs or {}
         self.trn_iterations += 1
         self.clr_iterations += 1

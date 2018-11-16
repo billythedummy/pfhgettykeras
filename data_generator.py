@@ -18,6 +18,7 @@ import skimage as sk
 from skimage import util
 import pims
 # Utility
+import sklearn as learn
 # import matplotlib.pyplot as plt
 
 
@@ -44,7 +45,7 @@ class DataGeneratorFactory():
 
 class DataGenerator(keras.utils.Sequence):
     def __init__(self, x_train, y_train, batch_size, dim, color_dict,
-                 indices=None, shuffle=True, distort_images=True):
+                 indices, shuffle=True, distort_images=True):
         'Initialization'
         # colour map
         self.color_dict = color_dict
@@ -61,34 +62,43 @@ class DataGenerator(keras.utils.Sequence):
         self.on_epoch_end()
 
     def __len__(self):
-        # Denotes the number of batches per epoch
         return int(len(self._indices) // self.batch_size)
 
     def __getitem__(self, index):
         # Generate indexes of the batch from random sampling
-        indexes = self._indices[index *
-                                self.batch_size:(index+1)*self.batch_size]
-        x_list, y_list = [], []
-        # Generate data
-        for i in indexes:
-            x, y = self.__data_generation(self.x_train, self.y_train, i)
-            x_list.append(x)
-            y_list.append(y)
-        return np.stack(tuple(x_list)), np.stack(tuple(y_list))
+        # indexes = self._indices[index *
+        #                         self.batch_size:(index+1)*self.batch_size]
+        # x_list, y_list = [], []
+        # # Generate data
+        # for i in indexes:
+        #     x, y = self.__data_generation(self.x_train, self.y_train, i)
+        #     x_list.append(x)
+        #     y_list.append(y)
+        # return np.stack(tuple(x_list)), np.stack(tuple(y_list))
+        y_list = []
+        for i in range(index * self.batch_size, (index+1) * self.batch_size):
+            y_list.append(self.__label_generation(self.y_train, 
+                i))
+        return y_list
 
     def on_epoch_end(self):
         # Updates indexes after each epoch
         if self.shuffle == True:
             np.random.shuffle(self._indices)
-
+    def __label_generation(self, y_train, f):
+        compare_frame = y_train[f]
+        compare_frame = self.resize_image(
+            compare_frame, self.dim[1], self.dim[0], 0)
+        compare_frame = self.rgb2onehot(compare_frame)
+        return compare_frame
     def __data_generation(self, x_train, y_train, f):
         rotation = random.uniform(-30, 30)
         cur_frame_raw = x_train[f]
         cur_frame_raw = self.resize_image(
-            cur_frame_raw, self.dim[1], self.dim[0], rotation, enhance=self.distort_images, resample=Image.LANCZOS)
-        cur_frame_raw = cur_frame_raw / 255.0
+            cur_frame_raw, self.dim[1], self.dim[0], rotation, isImage=True, enhance=self.distort_images, resample=Image.LANCZOS)
+
         mask_frame = None
-        if f > 0 and random.random() > 0.15:
+        if f > 0 and random.random() > 0.25:
             mask_frame = y_train[f-1]
             mask_frame = self.resize_image(
                 mask_frame, self.dim[1], self.dim[0], rotation)
@@ -106,14 +116,13 @@ class DataGenerator(keras.utils.Sequence):
             compare_frame, self.dim[1], self.dim[0], rotation)
         compare_frame = self.rgb2onehot(compare_frame)
         # compare_frame = np.reshape(
-        #     compare_frame, (self.dim[1] * self.dim[0], len(self.color_dict)))
-        compare_frame = np.argmax(compare_frame, axis=-1)
+        #      compare_frame, (self.dim[1] * self.dim[0], len(self.color_dict)))
         # compare_frame = np.expand_dims(compare_frame, 0)
         return cur_frame, compare_frame
 
     # Resize/augment image, keeping all of image with black bars filling rest
-    def resize_image(self, im, width, height, rotation, fill_color=(0, 0, 0), enhance=False, resample=Image.NEAREST):
-        im = Image.fromarray(im.astype('uint8'))
+    def resize_image(self, im, width, height, rotation, fill_color=(0, 0, 0), enhance=False, isImage=False,resample=Image.NEAREST):
+        im = Image.fromarray(np.uint8(im))
         new_im = ri.resize_contain(
             im, (width, height), bg_color=fill_color, resample=resample)
 
@@ -129,7 +138,11 @@ class DataGenerator(keras.utils.Sequence):
             new_im = ImageEnhance.Color(new_im).enhance(
                 random.uniform(0.5, 1.5))
 
-        im_array = np.asarray(new_im)
+        if isImage:
+            im_array = np.asarray(new_im) / 255.0
+        else:
+            im_array = np.asarray(new_im)
+
         if enhance:
             # Scikit Image enhancements
             if random.randint(0, 1):
@@ -152,10 +165,10 @@ class DataGenerator(keras.utils.Sequence):
         return arr
 
     def rgb2onehot_distorted(self, rgb_arr, width, height):
-        shiftx = math.pow(random.uniform(-1, 1), 5) * width
-        shifty = math.pow(random.uniform(-1, 1), 5) * height
+        shiftx = math.pow(random.uniform(-1, 1), 5) * (width/2)
+        shifty = math.pow(random.uniform(-1, 1), 5) * (height/2)
         shift = (int(shifty), int(shiftx))
-        noisiness = math.pow(random.uniform(0, 0.8), 2)
+        noisiness = math.pow(random.uniform(0.3, 0.95), 2)
         onehot = self.rgb2onehot(rgb_arr)
         noise = np.random.rand(
             self.dim[0], self.dim[1], len(self.color_dict)) * noisiness
