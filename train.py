@@ -42,7 +42,7 @@ def onehot2rgb(onehot, color_dict):
 
 IMAGE_INPUT_WIDTH = 512
 IMAGE_INPUT_HEIGHT = 256
-BATCH_SIZE = 20 # 5
+BATCH_SIZE = 5
 # Load a model from folder
 LOAD_MODEL = False
 LOAD_MODEL_PATH = "./Models/PlateSegmentation/weights-21.hdf5"
