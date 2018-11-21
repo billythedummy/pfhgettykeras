@@ -73,7 +73,8 @@ class DataGenerator(keras.utils.Sequence):
             x, y = self.__data_generation(self.x_train, self.y_train, i)
             x_list.append(x)
             y_list.append(y)
-        return np.stack(tuple(x_list)), np.stack(tuple(y_list))
+        y_ret = np.stack(tuple(y_list))
+        return np.stack(tuple(x_list)), [y_ret,y_ret]
 
 
     def on_epoch_end(self):
@@ -87,7 +88,7 @@ class DataGenerator(keras.utils.Sequence):
         compare_frame = self.rgb2onehot(compare_frame)
         return compare_frame
     def __data_generation(self, x_train, y_train, f):
-        rotation = random.uniform(-30, 30)
+        rotation = random.uniform(-15, 15)
         cur_frame_raw = x_train[f]
         cur_frame_raw = self.resize_image(
             cur_frame_raw, self.dim[1], self.dim[0], rotation, isImage=True, enhance=self.distort_images, resample=Image.LANCZOS)
@@ -131,7 +132,7 @@ class DataGenerator(keras.utils.Sequence):
             new_im = ImageEnhance.Sharpness(
                 new_im).enhance(random.uniform(0.5, 1.5))
             new_im = ImageEnhance.Color(new_im).enhance(
-                random.uniform(0.5, 1.5))
+                random.uniform(0.7, 1.3))
 
         if isImage:
             im_array = np.asarray(new_im) / 255.0
@@ -141,7 +142,7 @@ class DataGenerator(keras.utils.Sequence):
         if enhance:
             # Scikit Image enhancements
             if random.randint(0, 1):
-                im_array = sk.util.random_noise(im_array, mode="s&p")
+                im_array = sk.util.random_noise(im_array, mode="s&p", amount=0.01)
 
         return im_array
 

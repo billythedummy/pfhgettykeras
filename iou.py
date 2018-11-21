@@ -1,6 +1,6 @@
 """An implementation of the Intersection over Union (IoU) metric for Keras."""
 from keras import backend as K
-
+import numpy as np
 
 def iou(y_true, y_pred, label: int):
     """
