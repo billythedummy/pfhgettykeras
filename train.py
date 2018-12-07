@@ -38,7 +38,7 @@ flags = tf.app.flags
 flags.DEFINE_string('x_train', '', 'Path to the raw video (x_train_path)')
 flags.DEFINE_string('y_train', '', 'Path to labelled mask video (y_train_path)')
 flags.DEFINE_string('weights', '', 'Path to weights')
-flags.DEFINE_boolean('from_chkpt', '', 'Resume training from checkpoint?')
+flags.DEFINE_boolean('from_chkpt', True, 'Resume training from checkpoint?')
 flags.DEFINE_string('chkpt', '', 'Directory to save checkpoints to')
 FLAGS = flags.FLAGS
 
