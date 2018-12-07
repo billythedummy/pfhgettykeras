@@ -34,6 +34,13 @@ import sys
 sys.path.append('./model')
 from model_skip import SegmentationNetwork
 
+flags = tf.app.flags
+flags.DEFINE_string('x_train', '', 'Path to the raw video (x_train_path)')
+flags.DEFINE_string('y_train', '', 'Path to labelled mask video (y_train_path)')
+flags.DEFINE_string('weights', '', 'Path to weights')
+flags.DEFINE_string('chkpt', '', 'Directory to save checkpoints to')
+FLAGS = flags.FLAGS
+
 def onehot2rgb(onehot, color_dict):
     single_layer = np.argmax(onehot, axis=-1)
     output = np.zeros(onehot.shape[:2]+(3,))
@@ -46,7 +53,7 @@ IMAGE_INPUT_HEIGHT = 256
 BATCH_SIZE = 6
 # Load a model from folder
 LOAD_MODEL = True
-LOAD_MODEL_PATH = "./Models/PlateSegmentation/weights-02.hdf5"
+LOAD_MODEL_PATH = FLAGS.weights
 color_dict = {0: (0,   0, 0),  # 0: Background
               1: (255, 0, 0),  # 1: Red
               2: (0, 0, 255),  # 2: Blue
@@ -74,8 +81,8 @@ def weighted_pixelwise_crossentropy(class_weights):
 print("Initializing...")
 # Create data generator
 datagen = DataGeneratorFactory(
-    x_train_path="./Training/newtrainingdata.mov",
-    y_train_path="./Training/newtraininglabels.mov", batch_size=BATCH_SIZE,
+    x_train_path=FLAGS.x_train,
+    y_train_path=FLAGS.y_train, batch_size=BATCH_SIZE,
     dim=(IMAGE_INPUT_HEIGHT, IMAGE_INPUT_WIDTH, 3), shuffle=True,
     color_dict=color_dict, validation_split=0.05)
 train_data = datagen.datagen
@@ -110,30 +117,13 @@ print("Tensorboard loaded!")
 cyclical = CyclicLR(base_lr=1e-3, max_lr=5e-3,
                     step_size=train_data.__len__() * 2.5, mode="triangular2")
 checkpoint = ModelCheckpoint(
-    "./Models/PlateSegmentation/weights-{epoch:02d}.hdf5", verbose=1, period=1)
+    FLAGS.chkpt.rstrip("/") + "/weights-{epoch:02d}.hdf5", verbose=1, period=1)
 
 
 def train(data_generator, val_generator, callbacks):
     return model.fit_generator(generator=data_generator, validation_data=val_generator,
                                callbacks=callbacks, epochs=50, verbose=1,
                                 shuffle=False)
-
-# def inspect_train(data_generator, callbacks, epochs):
-#     # callbacks[0].on_train_begin()
-#     for j in range(0, epochs):
-#         for i in range(len(data_generator)):
-#             x, y= data_generator.__getitem__(i)
-#             output = model.train_on_batch(x, y)
-
-#             # callbacks[0].on_batch_end(i)
-#             print("Batch: " + str(i) + "/" + str(len(data_generator)))
-#             print("Loss: " + str(output[0]))
-#             if i % 25 == 0:
-#                 plt.figure()
-#                 for i in range(len(output[1])):
-#                     plt.subplot(5,2,i + 1)
-#                     plt.imshow(onehot2rgb(output[1][i], color_dict))
-#                 plt.show()
 
 
 def resize_image(im, width, height, fill_color=(0, 0, 0)):
@@ -160,20 +150,6 @@ def rgb2onehot(rgb_arr):
             (-1, 3)) == color_dict[i], axis=1).reshape(shape[:2])
     return arr
 
-# predictions = model.predict(train_data.__getitem__(0)[0])
-# for pred in predictions:
-#     pred_rgb = np.reshape(pred, (IMAGE_INPUT_HEIGHT, IMAGE_INPUT_WIDTH, len(color_dict)))
-#     pred_rgb = onehot2rgb(pred_rgb, color_dict)
-#     plt.imshow(pred_rgb)
-#     plt.show()
-
-# inspect_train(train_data, [], 5)
 history = train(data_generator=train_data, val_generator=val_data,
                 callbacks=[cyclical, checkpoint, tensorboard])
-# plt.plot(cyclical.history['lr'], cyclical.history['loss'])
-# plt.xlabel('Learning Rate')
-# plt.ylabel('Loss')
-# plt.show()
 
-# x_test = pims.Video("./Training/original.mov")
-# test(x_test)
