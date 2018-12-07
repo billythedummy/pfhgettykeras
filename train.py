@@ -38,6 +38,7 @@ flags = tf.app.flags
 flags.DEFINE_string('x_train', '', 'Path to the raw video (x_train_path)')
 flags.DEFINE_string('y_train', '', 'Path to labelled mask video (y_train_path)')
 flags.DEFINE_string('weights', '', 'Path to weights')
+flags.DEFINE_boolean('from_chkpt', '', 'Resume training from checkpoint?')
 flags.DEFINE_string('chkpt', '', 'Directory to save checkpoints to')
 FLAGS = flags.FLAGS
 
@@ -52,7 +53,7 @@ IMAGE_INPUT_WIDTH = 512
 IMAGE_INPUT_HEIGHT = 256
 BATCH_SIZE = 6
 # Load a model from folder
-LOAD_MODEL = True
+LOAD_MODEL = FLAGS.from_chkpt
 LOAD_MODEL_PATH = FLAGS.weights
 color_dict = {0: (0,   0, 0),  # 0: Background
               1: (255, 0, 0),  # 1: Red
