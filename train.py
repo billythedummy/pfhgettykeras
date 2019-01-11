@@ -40,6 +40,8 @@ flags.DEFINE_string('y_train', '', 'Path to labelled mask video (y_train_path)')
 flags.DEFINE_string('weights', '', 'Path to weights')
 flags.DEFINE_boolean('from_chkpt', True, 'Resume training from checkpoint?')
 flags.DEFINE_string('chkpt', '', 'Directory to save checkpoints to')
+flags.DEFINE_string('lr', '1e-3', 'Learning Rate')
+
 FLAGS = flags.FLAGS
 
 def onehot2rgb(onehot, color_dict):
@@ -115,7 +117,7 @@ tensorboard = TensorBoard(
     log_dir="logs/{}".format(time.time()), write_graph=True, update_freq="batch")
 print("Tensorboard loaded!")
 # 5e-5
-cyclical = CyclicLR(base_lr=1e-3, max_lr=5e-3,
+cyclical = CyclicLR(base_lr=float(flags.lr), max_lr=5e-3,
                     step_size=train_data.__len__() * 2.5, mode="triangular2")
 checkpoint = ModelCheckpoint(
     FLAGS.chkpt.rstrip("/") + "/weights-{epoch:02d}.hdf5", verbose=1, period=1)
