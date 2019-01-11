@@ -105,8 +105,8 @@ bla_iou = build_iou_for(0, "black_iou")
 r_iou = build_iou_for(1, "red_iou")
 blu_iou = build_iou_for(2, "blue_iou")
 model.compile(optimizer=sgd, 
-    # loss=weighted_pixelwise_crossentropy([0.00418313, 0.509627837, 1.]), 
-    loss = keras_lovasz_softmax,
+    loss=weighted_pixelwise_crossentropy([0.00418313, 0.509627837, 1.]), 
+    #loss = keras_lovasz_softmax,
     sample_weight_mode="temporal", metrics=[bla_iou, r_iou, blu_iou])
 print("Model compiled!")
 
