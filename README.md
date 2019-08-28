@@ -2,7 +2,7 @@
 
 Cloned from private ARUW repository for sole purpose of training the model on Google colab.
 
-All work in this repo done by [pfhgetty](https://github.com/billythedummy/pfhgettykeras)
+All work in this repo done by [pfhgetty](https://github.com/pfhgetty)
 
 # Synopsis
 
